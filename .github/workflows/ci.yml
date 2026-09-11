@@ -1,0 +1,232 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keeps the (large) build output readable in the log.
+  CARGO_NET_RETRY: 3
+
+jobs:
+  test:
+    name: test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    # Stylo, parley, wgpu and aws-lc-rs all compile from source. A cold build is
+    # slow enough that the default 6h limit is the wrong guardrail, but 90m is
+    # comfortably above a real cold build.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Caches ~/.cargo and ./target keyed on the lockfile. Without this every
+      # run recompiles Stylo, which dominates the wall clock.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # fontconfig + a real font family: the renderer resolves fonts through
+          # the host, and a fontless runner produces blank pages that still
+          # return BLITZ_OK. cmake is for aws-lc-rs (rustls' crypto provider).
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake libfontconfig1-dev fonts-liberation fonts-dejavu-core
+
+      - name: Install NASM
+        if: runner.os == 'Windows'
+        # aws-lc-rs assembles its primitives and needs NASM on Windows. Not
+        # present in the runner image by default.
+        run: |
+          choco install nasm -y --no-progress
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+
+      - name: Build the static library
+        run: cargo build --release
+
+      - name: Check for duplicate transitive crates
+        shell: bash
+        # The [patch.crates-io] redirect exists to keep exactly one anyrender and
+        # one peniko in the graph. Two copies produce trait mismatches that are
+        # hard to read, so surface it here as a warning rather than letting it
+        # show up as a wall of type errors.
+        run: |
+          echo "--- anyrender ---"; cargo tree -i anyrender  || true
+          echo "--- peniko    ---"; cargo tree -i peniko     || true
+          echo "--- duplicates ---"
+          cargo tree -d || true
+
+      - name: Verify the archive was produced
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            ls -l target/release/blitz.lib
+          else
+            ls -l target/release/libblitz.a
+          fi
+
+      - name: Print native-static-libs
+        shell: bash
+        # Not an assertion, just a record: this is the flag list downstream
+        # consumers need, and it changes with the dependency tree.
+        run: |
+          cargo rustc --release --crate-type staticlib -- \
+            --print native-static-libs 2>&1 | grep native-static-libs || true
+
+      - name: Run tests
+        # Hermetic only. The network-dependent screenshot lives in its own job so
+        # an upstream outage can't turn the whole matrix red.
+        run: cargo test --release
+
+      # --- C examples: POSIX-only ------------------------------------------
+      # render.c uses realpath(), strcasecmp() and clock_gettime(). Rather than
+      # pretend otherwise, the C examples are skipped on Windows; the library
+      # itself and its header are portable, and the Rust tests exercise the same
+      # FFI entry points on all three platforms.
+
+      - name: Build the C examples
+        if: runner.os != 'Windows'
+        run: make examples
+
+      - name: Render a local markdown file
+        if: runner.os != 'Windows'
+        # End-to-end through the C API with no network involved: reads a file,
+        # converts markdown, lays it out, writes a PNG.
+        run: |
+          make render INPUT=README.md OUTPUT=ci-readme.png WIDTH=900
+          ls -l ci-readme.png
+
+      - name: Render a local HTML file
+        if: runner.os != 'Windows'
+        run: |
+          printf '<h1>CI</h1><p>Rendered on %s.</p>' "$RUNNER_OS" > ci.html
+          make render INPUT=ci.html OUTPUT=ci-html.png WIDTH=600
+          ls -l ci-html.png
+
+      - name: Check the output is a real image
+        if: runner.os != 'Windows'
+        shell: bash
+        # A status code of 0 says the pipeline ran, not that anything was
+        # painted. Size is the cheapest proxy for "fonts actually resolved".
+        run: |
+          for f in ci-readme.png ci-html.png; do
+            size=$(wc -c < "$f")
+            echo "$f: $size bytes"
+            if [ "$size" -lt 2048 ]; then
+              echo "::error::$f is suspiciously small — missing fonts?"
+              exit 1
+            fi
+          done
+
+      - name: Stage the distributable
+        if: runner.os != 'Windows'
+        run: make dist
+
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os != 'Windows'
+        with:
+          name: renders-${{ matrix.os }}
+          path: |
+            ci-readme.png
+            ci-html.png
+            tests/output/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: lint
+
+      - run: cargo fmt --all -- --check
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake libfontconfig1-dev
+
+      - run: cargo clippy --all-targets -- -D warnings
+
+      - name: Compile the C examples with warnings as errors
+        run: |
+          make lib
+          make examples CFLAGS="-std=c11 -O2 -Wall -Wextra -Werror"
+
+      - name: Shellcheck the update script
+        run: |
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck scripts/update-pins.sh
+
+  network:
+    name: live render (google.com)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Renders a real page over the network. Allowed to fail: this depends on an
+    # external site that may rate-limit, redirect to a consent page, or block
+    # datacenter IPs outright. A red mark here means "look at it", not "the code
+    # is broken" — the matrix above is the actual gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: network
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake libfontconfig1-dev fonts-liberation fonts-dejavu-core
+
+      - name: Render tests/output/{readme,google}.png
+        run: make screenshots
+
+      - name: Render google.com through the C example
+        run: make run
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-renders
+          path: |
+            google.png
+            tests/output/*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+  pins:
+    name: pins up to date
+    runs-on: ubuntu-latest
+    # Informational. Upstream moving on is expected, not a build failure — this
+    # is here so someone notices rather than to block a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare against upstream HEAD
+        run: bash scripts/update-pins.sh --check

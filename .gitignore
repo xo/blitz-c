@@ -1,0 +1,22 @@
+# Rust
+/target/
+
+# C example binaries and the cached link flags
+/build/
+
+# Staged artifacts for downstream consumers (make dist)
+/dist/
+
+# Rendered output from the examples and from tests/render_to_disk.rs
+/*.png
+/tests/output/
+
+# Editor / OS
+*.swp
+.DS_Store
+.idea/
+.vscode/
+
+# Cargo.lock is deliberately NOT ignored. This crate produces a linkable
+# artifact from git-pinned dependencies, so a committed lockfile is what makes
+# a given libblitz.a reproducible.

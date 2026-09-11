@@ -1,0 +1,106 @@
+[package]
+name = "blitz-c"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91.0"
+license = "MIT OR Apache-2.0"
+description = "C ABI bindings for headless Blitz HTML rendering"
+repository = "https://github.com/dioxuslabs/blitz"
+publish = false
+
+# The crate is named `blitz-c`, but the *library* is named `blitz`, and that is
+# what determines the artifact name: libblitz.a / libblitz.so / blitz.lib.
+[lib]
+name = "blitz"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# This crate is its own workspace root. Required, not cosmetic: cargo only
+# honours [patch] in a workspace root manifest, and the patch below is load
+# bearing (see the note above it).
+[workspace]
+
+[dependencies]
+# Blitz, pinned. All five crates must share one git source + rev so they resolve
+# to a single checkout — mixing revs gives you two incompatible copies of
+# blitz-traits and a wall of trait-mismatch errors.
+blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-net = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+
+# AnyRender is declared against crates.io and redirected by [patch.crates-io].
+# Declaring it as a git dependency directly would NOT work: blitz-paint depends
+# on `anyrender` from crates.io, so a direct git dep here would put two distinct
+# `anyrender` crates in the graph. `PaintScene` from one is not `PaintScene`
+# from the other, and `paint_scene(scene, ...)` stops compiling. Patching
+# rewrites the crates.io source for the whole graph, blitz-paint included, so
+# everything shares one copy.
+anyrender = "0.13.0"
+anyrender_vello_cpu = { version = "0.17.0", features = ["multithreading"] }
+
+# Must match the peniko that AnyRender and Blitz resolve to, since `Fill`,
+# `Rect` and `Color` cross the boundary between them.
+peniko = "0.6.0"
+
+png = "0.18"
+url = "2.5"
+
+# TLS has to be opted into explicitly, or every https:// fetch fails at runtime.
+# reqwest 0.13 renamed these: `rustls-tls` (0.12) is now `rustls`, and trust
+# roots are a separate feature. `webpki-roots` bundles Mozilla's root store into
+# the binary, which is what you want for a static library — it works in a scratch
+# container with no ca-certificates package installed. Swap it for
+# `rustls-native-certs` if you need the host trust store instead, e.g. behind a
+# corporate MITM proxy.
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls",
+    "webpki-roots",
+    "charset",
+    "http2",
+] }
+tokio = { version = "1.42", features = ["rt-multi-thread", "time"] }
+
+# Markdown -> HTML.
+pulldown-cmark = "0.13"
+
+tracing-subscriber = { version = "0.3", optional = true }
+
+[features]
+default = []
+# Route Blitz's `tracing` output to stderr. Off by default: a library linked
+# into a host process should not install global subscribers uninvited.
+tracing = ["dep:tracing-subscriber"]
+
+[patch.crates-io]
+anyrender = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+anyrender_vello_cpu = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+# Uncomment as needed. Which of these appear depends on which blitz-paint
+# features are enabled; cargo warns about patches it didn't use, so add them
+# only when a duplicate actually shows up in `cargo tree`.
+# anyrender_svg = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+# anyrender_serialize = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+# wgpu_context = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+
+# --- Profiles -----------------------------------------------------------------
+# Previously inherited from the blitz workspace; redefined here. Note that none
+# of these set `panic = "abort"`. The FFI layer relies on `catch_unwind` to stop
+# panics crossing into Go, and abort would turn a recoverable error into a dead
+# process.
+
+[profile.profile]
+inherits = "release"
+debug = true
+
+[profile.production]
+inherits = "release"
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+strip = true
+incremental = false
+
+[profile.p2]
+inherits = "production"
+opt-level = 2
