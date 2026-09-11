@@ -37,16 +37,6 @@ CC      ?= cc
 CFLAGS  ?= -std=c11 -O2 -Wall -Wextra
 CPPFLAGS += -Iinclude
 
-# Used only if cargo's --print native-static-libs comes back empty.
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Darwin)
-  FALLBACK_LIBS := -lm -liconv -framework CoreFoundation -framework CoreText \
-                   -framework CoreGraphics -framework Security \
-                   -framework SystemConfiguration
-else
-  FALLBACK_LIBS := -lm -ldl -lpthread -lgcc_s -lutil -lrt
-endif
-
 # `make run` renders a URL; `make render INPUT=...` takes a URL or a local
 # .html / .md file.
 URL    ?= https://www.google.com
@@ -67,16 +57,30 @@ $(LIB): $(RUST_SRC)
 	@touch $@
 
 # A Rust staticlib does not bundle the system libraries it depends on, and this
-# dependency tree is deep (rustls/ring, fontique, tokio). Ask rustc for the list
-# rather than hardcoding it — the answer differs by platform and by which
+# dependency tree is deep (rustls/aws-lc, fontique, tokio). Ask rustc for the
+# list rather than hardcoding it — the answer differs by platform and by which
 # features are enabled.
+#
+# Colour is forced off on the cargo side, which is what decides whether rustc is
+# asked to render diagnostics with ANSI escapes. CI exports
+# CARGO_TERM_COLOR=always, and the escapes that adds around the `note:` line
+# stop the pattern below from matching anything. Don't pass `--color` to rustc
+# instead: it conflicts with the `--error-format=json` cargo already passes, and
+# the crate fails to compile.
+#
+# There is deliberately no hardcoded fallback. The lists this used to carry were
+# both wrong (Linux was missing -lfontconfig, macOS -framework Foundation), and
+# substituting one silently turned a detection failure into a wall of undefined
+# symbols at link time. Failing here names the actual problem.
 $(NATIVE_LIB_FLAGS): $(LIB) | $(BUILD)
-	@cargo rustc $(CARGO_FLAGS) --crate-type staticlib -- \
-	    --print native-static-libs 2>&1 \
+	@CARGO_TERM_COLOR=never cargo rustc $(CARGO_FLAGS) --color never \
+	    --crate-type staticlib -- --print native-static-libs 2>&1 \
 	  | sed -n 's/^note: native-static-libs: *//p' | tail -n1 > $@
 	@if [ ! -s $@ ]; then \
-	    echo "warning: could not read native-static-libs, using fallback" >&2; \
-	    echo "$(FALLBACK_LIBS)" > $@; \
+	    rm -f $@; \
+	    echo "error: rustc did not report native-static-libs." >&2; \
+	    echo "  reproduce with: cargo rustc $(CARGO_FLAGS) --crate-type staticlib -- --print native-static-libs" >&2; \
+	    exit 1; \
 	fi
 
 native-libs: $(NATIVE_LIB_FLAGS)
