@@ -430,7 +430,12 @@ pub unsafe extern "C" fn blitz_render_url(
 
         let parsed = Url::parse(url_str)
             .or_else(|_| Url::parse(&format!("https://{url_str}")))
-            .map_err(|e| (BLITZ_ERR_INVALID_URL, format!("invalid url {url_str:?}: {e}")))?;
+            .map_err(|e| {
+                (
+                    BLITZ_ERR_INVALID_URL,
+                    format!("invalid url {url_str:?}: {e}"),
+                )
+            })?;
         let canonical = parsed.to_string();
 
         let html = fetch(ctx, &parsed, &options)?;
@@ -573,9 +578,7 @@ fn render(
     // spawns tasks, so they need to run inside the runtime's context.
     let _enter = ctx.runtime.enter();
 
-    let net = options
-        .enable_net
-        .then(|| Arc::new(Provider::new(None)));
+    let net = options.enable_net.then(|| Arc::new(Provider::new(None)));
 
     let viewport = Viewport::new(
         (options.css_width as f64 * options.scale) as u32,
@@ -655,7 +658,10 @@ fn render(
     if buffer.len() < expected {
         return Err((
             BLITZ_ERR_RENDER,
-            format!("renderer produced {} bytes, expected {expected}", buffer.len()),
+            format!(
+                "renderer produced {} bytes, expected {expected}",
+                buffer.len()
+            ),
         ));
     }
 

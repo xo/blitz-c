@@ -16,10 +16,9 @@ use std::ffi::{CStr, CString};
 use std::path::{Path, PathBuf};
 
 use blitz::{
-    BLITZ_OK, BlitzContext, BlitzImage, BlitzRenderOptions, blitz_context_free,
-    blitz_context_new, blitz_image_free, blitz_image_write_png,
-    blitz_last_error_message, blitz_render_markdown, blitz_render_options_default,
-    blitz_render_url,
+    BLITZ_OK, BlitzContext, BlitzImage, BlitzRenderOptions, blitz_context_free, blitz_context_new,
+    blitz_image_free, blitz_image_write_png, blitz_last_error_message, blitz_render_markdown,
+    blitz_render_options_default, blitz_render_url,
 };
 
 fn output_dir() -> PathBuf {
@@ -33,7 +32,9 @@ fn last_error() -> String {
     if msg.is_null() {
         "no detail".to_owned()
     } else {
-        unsafe { CStr::from_ptr(msg) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(msg) }
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
@@ -87,7 +88,11 @@ fn write_and_check(image: &Image, name: &str) -> PathBuf {
     );
     // A blank or trivially small file usually means fonts are missing or the
     // document never laid out, which a status code alone wouldn't catch.
-    assert!(bytes.len() > 2048, "{name} is suspiciously small: {} bytes", bytes.len());
+    assert!(
+        bytes.len() > 2048,
+        "{name} is suspiciously small: {} bytes",
+        bytes.len()
+    );
 
     println!(
         "wrote {} ({}x{}, {} KiB)",
