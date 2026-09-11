@@ -25,13 +25,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # blitz-traits and a wall of trait-mismatch errors.
 blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
 blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
-# If `make check-tls` reports OpenSSL in the graph, blitz-net is the usual
-# culprit: its default features enable reqwest's native-tls. Turn them off and
-# select its rustls option instead — check the crate's own manifest for the
-# exact feature name, it is not stable across revisions:
-#
-#   blitz-net = { git = "...", rev = "...", default-features = false, features = ["rustls"] }
-blitz-net = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+# NOTE: blitz-net is deliberately NOT a dependency. It sets reqwest's
+# `native-tls` feature on its dependency line, unconditionally rather than
+# behind a cargo feature, so depending on it puts OpenSSL in the graph and
+# `-lssl -lcrypto` on every downstream link — and because cargo unions
+# features, nothing here can subtract it (`default-features = false` has no
+# effect; there is no rustls feature to pick instead). src/net.rs implements
+# blitz_traits::net::NetProvider against this crate's own reqwest instead.
+# Re-check that crate's manifest when bumping the pin: if it ever gates TLS
+# behind a feature, src/net.rs can go away.
 blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
 blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
 
@@ -61,15 +63,19 @@ url = "2.5"
 # need the host trust store instead, e.g. behind a corporate MITM proxy.
 #
 # NOTE: default-features = false here does NOT guarantee OpenSSL stays out of the
-# build. Cargo unions features across the whole graph, so if any other crate —
-# blitz-net in particular — enables reqwest's `default-tls`, native-tls and
-# OpenSSL come back in and you get -lssl -lcrypto at link time. See
+# build. Cargo unions features across the whole graph, so any other crate that
+# enables reqwest's `default-tls` or `native-tls` brings OpenSSL back in and you
+# get -lssl -lcrypto at link time, with no way to opt out from this manifest.
+# That is why blitz-net is not a dependency (see the note above). Verify with
 # `make check-tls`.
 reqwest = { version = "0.13", default-features = false, features = [
     "webpki-roots",
     "charset",
     "http2",
 ] }
+
+# Sub-resource fetching in src/net.rs: data: URLs.
+data-url = "0.3"
 
 # Only used by the tls-ring feature, to install the crypto provider.
 #
@@ -82,7 +88,8 @@ rustls = { version = "0.23", default-features = false, features = [
     "std",
     "tls12",
 ], optional = true }
-tokio = { version = "1.42", features = ["rt-multi-thread", "time"] }
+# `sync` is for the per-origin request semaphore in src/net.rs.
+tokio = { version = "1.42", features = ["rt-multi-thread", "time", "sync"] }
 
 # Markdown -> HTML.
 pulldown-cmark = "0.13"

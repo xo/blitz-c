@@ -17,8 +17,8 @@ use std::path::{Path, PathBuf};
 
 use blitz::{
     BLITZ_OK, BlitzContext, BlitzImage, BlitzRenderOptions, blitz_context_free, blitz_context_new,
-    blitz_image_free, blitz_image_write_png, blitz_last_error_message, blitz_render_markdown,
-    blitz_render_options_default, blitz_render_url,
+    blitz_image_free, blitz_image_write_png, blitz_last_error_message, blitz_render_html,
+    blitz_render_markdown, blitz_render_options_default, blitz_render_url,
 };
 
 fn output_dir() -> PathBuf {
@@ -158,6 +158,68 @@ fn renders_google_to_png() {
     assert!(image.0.height >= 1600, "got {}px", image.0.height);
 
     write_and_check(&image, "google.png");
+}
+
+/// A 1x1 opaque red PNG.
+const RED_PIXEL_PNG_BASE64: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4z8DwHwAFAAH/VscvDQAAAABJRU5ErkJggg==";
+
+fn pixel_at(image: &Image, x: u32, y: u32) -> [u8; 4] {
+    let buffer = unsafe {
+        std::slice::from_raw_parts(
+            image.0.data,
+            image.0.height as usize * image.0.stride as usize,
+        )
+    };
+    let offset = y as usize * image.0.stride as usize + x as usize * 4;
+    buffer[offset..offset + 4].try_into().unwrap()
+}
+
+/// Exercises the sub-resource provider in `src/net.rs`: an `<img>` only paints
+/// if the provider fetched it, handed the bytes to the document, and kept its
+/// pending count accurate long enough for the settle loop to notice.
+///
+/// A `data:` URL keeps this offline, so it runs everywhere the markdown test
+/// does while still going through the whole provider path.
+#[test]
+fn renders_an_image_fetched_by_the_net_provider() {
+    let html = CString::new(format!(
+        "<html><head><style>\
+         html,body{{margin:0;padding:0;background:#fff}}\
+         img{{display:block;width:100px;height:100px}}\
+         </style></head><body>\
+         <img src=\"data:image/png;base64,{RED_PIXEL_PNG_BASE64}\">\
+         </body></html>"
+    ))
+    .unwrap();
+
+    let ctx = Context::new();
+
+    let mut opts = base_options();
+    // The provider is only built when the net is enabled, even though a data:
+    // URL never leaves the process.
+    opts.enable_net = 1;
+
+    let mut image = Image(BlitzImage::empty());
+    let rc =
+        unsafe { blitz_render_html(ctx.0, html.as_ptr(), std::ptr::null(), &opts, &mut image.0) };
+    assert_eq!(rc, BLITZ_OK, "render_html: {}", last_error());
+
+    // The 100x100 CSS px image sits at the origin, so at 2x it covers device
+    // pixels 0..200 on both axes; sample its centre.
+    let [r, g, b, a] = pixel_at(&image, 100, 100);
+    assert!(
+        r > 200 && g < 60 && b < 60 && a == 255,
+        "expected the decoded red image at (100,100), got rgba({r},{g},{b},{a}) \
+         — the net provider did not deliver the image"
+    );
+
+    // Somewhere well below the image is still background, so the assertion
+    // above is about the image and not a uniformly red canvas.
+    let [r, g, b, _] = pixel_at(&image, 100, 600);
+    assert!(
+        r > 200 && g > 200 && b > 200,
+        "expected white background at (100,600), got rgb({r},{g},{b})"
+    );
 }
 
 /// Cheap guard against the most annoying FFI regression: a render succeeding but

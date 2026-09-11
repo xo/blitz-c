@@ -32,12 +32,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 mod markdown;
+mod net;
 
 use anyrender::{PaintScene as _, render_to_buffer};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
 use blitz_dom::{DocumentConfig, util::Color};
 use blitz_html::HtmlDocument;
-use blitz_net::Provider;
 use blitz_paint::paint_scene;
 use blitz_traits::shell::{ColorScheme, Viewport};
 use peniko::Fill;
@@ -597,7 +597,11 @@ fn render(
     // spawns tasks, so they need to run inside the runtime's context.
     let _enter = ctx.runtime.enter();
 
-    let net = options.enable_net.then(|| Arc::new(Provider::new(None)));
+    let net = if options.enable_net {
+        Some(Arc::new(net::Provider::new(options)?))
+    } else {
+        None
+    };
 
     let viewport = Viewport::new(
         (options.css_width as f64 * options.scale) as u32,
@@ -623,7 +627,7 @@ fn render(
     loop {
         document.resolve(0.0);
         match &net {
-            Some(n) if !n.is_empty() => {}
+            Some(n) if n.has_pending() => {}
             _ => break,
         }
         if Instant::now() >= deadline {
