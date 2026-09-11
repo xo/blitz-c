@@ -335,12 +335,31 @@ pub struct BlitzContext {
     render_lock: Mutex<()>,
 }
 
+/// With `rustls-no-provider`, rustls has no default crypto provider and every
+/// handshake fails until one is installed. Do it once per process, on the first
+/// context creation, rather than in a constructor the caller might never reach.
+#[cfg(feature = "tls-ring")]
+fn install_crypto_provider() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        // Already-installed is not an error: a host process linking this
+        // library may have installed its own provider first, and theirs wins.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
+#[cfg(not(feature = "tls-ring"))]
+fn install_crypto_provider() {}
+
 /// Create a rendering context. `worker_threads` of 0 lets tokio pick.
 /// Returns NULL on failure; call `blitz_last_error_message`.
 #[unsafe(no_mangle)]
 pub extern "C" fn blitz_context_new(worker_threads: u32) -> *mut BlitzContext {
     clear_error();
     let result = catch_unwind(|| {
+        install_crypto_provider();
+
         let mut builder = tokio::runtime::Builder::new_multi_thread();
         builder.enable_all().thread_name("blitz-net");
         if worker_threads > 0 {

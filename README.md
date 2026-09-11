@@ -124,6 +124,7 @@ cargo build --profile production
 ## Tests
 
 ```bash
+make fmt           # cargo fmt --all; CI rejects unformatted code
 make test          # unit tests only; hermetic, no network
 make screenshots   # renders tests/output/{readme,google}.png
 ```
@@ -170,7 +171,7 @@ status code. Rendered output is uploaded as an artifact on every run.
 Windows additionally installs NASM, which `aws-lc-rs` (rustls' crypto provider)
 needs to assemble its primitives.
 
-Expect the lint job to want a `cargo fmt` pass on first run.
+Run `make fmt` before committing. The lint job fails on unformatted code.
 
 ## Updating the pinned revisions
 
@@ -196,21 +197,76 @@ The script says so when it happens.
 If the exec bit didn't survive (zip extraction, `git archive`, some Windows
 checkouts), either run it through `bash` as above or `chmod +x scripts/update-pins.sh`.
 
-## TLS
+## TLS, and getting rid of OpenSSL
 
-`reqwest` is pinned with `rustls` + `webpki-roots` and `default-features = false`,
-which keeps native-tls/OpenSSL out of the static archive entirely. Two things
-follow from that choice:
+The TLS backend is selected by a feature:
 
-- Root certificates are compiled in, so the library works in a scratch container
-  with no `ca-certificates` installed. If you're behind a proxy with a private
-  CA, swap `webpki-roots` for `rustls-native-certs` to use the host store.
-- The `rustls` feature pulls in `aws-lc-rs` as the crypto provider, which builds
-  C and needs `cmake` plus a working C toolchain (and NASM on Windows). If that
-  fails to compile, that's the cause — `rustls-no-provider` plus a provider of
-  your choice is the escape hatch.
+```bash
+cargo build --release                                           # tls-aws-lc (default)
+cargo build --release --no-default-features --features tls-ring # ring instead
+```
 
-## Find the transitive native libraries
+Both are pure-Rust stacks in the sense that matters: neither links OpenSSL,
+neither needs a system TLS library at runtime, and roots are compiled in via
+`webpki-roots` so the archive works in a scratch container. They differ only in
+where the crypto primitives come from.
+
+- **tls-aws-lc** — rustls with aws-lc-rs, reqwest's default. Fast, FIPS-capable,
+  but aws-lc-rs compiles C and assembly, so building needs cmake and a C
+  toolchain (plus NASM on Windows).
+- **tls-ring** — rustls with ring, installed as the process default provider on
+  the first `blitz_context_new`. Drops the cmake/NASM requirement. If you use
+  this, confirm the `rustls` version in `Cargo.toml` matches what reqwest
+  resolves to (`cargo tree -i rustls`) — a mismatch means the provider is
+  installed into a *different* rustls than the one doing the handshake, and
+  every connection fails at runtime with no obvious cause.
+
+### Why `-lssl -lcrypto` still shows up
+
+Selecting a rustls backend does not, by itself, keep OpenSSL out. **Cargo unions
+features across the whole dependency graph.** Setting `default-features = false`
+on reqwest here only speaks for this crate's own edge — if any other crate in
+the tree enables `reqwest/default-tls`, native-tls comes back, and OpenSSL
+appears in the link flags for everyone downstream.
+
+In this graph the crate that does it is almost always `blitz-net`.
+
+Find the culprit:
+
+```bash
+make check-tls
+cargo tree -e features -i openssl-sys
+```
+
+`cargo tree -e features -i` prints the chain of features that pulled it in, which
+names the crate and the feature responsible. The fix is to turn off that crate's
+defaults and select its rustls option:
+
+```toml
+blitz-net = { git = "...", rev = "...", default-features = false, features = ["rustls"] }
+```
+
+The exact feature name isn't stable across revisions, so check `blitz-net`'s own
+manifest in the checkout rather than trusting the snippet above.
+
+If `blitz-net` offers no rustls option at all, no amount of configuration here
+will help — feature unification gives a dependent no way to *remove* a feature.
+That case needs a change upstream, or a `[patch]` pointing `blitz-net` at a fork
+with the feature added.
+
+`make check-tls` fails when `openssl-sys` is present, and CI runs the same check,
+so once this is clean it stays clean.
+
+### After removing it
+
+The link flags change. Re-run `make native-libs` and update any consumer that
+hardcodes them — in the Go bindings that's the `#cgo LDFLAGS` lines, which
+currently carry `-lssl -lcrypto` for the Linux targets.
+
+Note that `-lfontconfig` is a separate system dependency, from font enumeration
+rather than TLS, and removing OpenSSL doesn't affect it.
+
+## Find the transitive native libraries## Find the transitive native libraries
 
 This matters more than usual. A Rust `staticlib` does **not** bundle the system
 libraries it depends on, and Blitz's dependency tree is deep — parley/fontique

@@ -7,6 +7,8 @@
 #   make render INPUT=docs/i.html OUTPUT=i.png WIDTH=1400
 #   make dist         stage libblitz.a + blitz.h + link flags for consumers
 #   make screenshots  render tests/output/{readme,google}.png via cargo test
+#   make fmt          cargo fmt --all (CI rejects unformatted code)
+#   make check-tls    fail if OpenSSL made it into the dependency graph
 #   make update-pins  repin the git dependencies to their latest commits
 #   make native-libs  show the system libraries a static link needs
 #
@@ -53,8 +55,8 @@ WIDTH  ?= 1200
 INPUT  ?= README.md
 OUTPUT ?=
 
-.PHONY: all lib examples run render native-libs dist test screenshots \
-        update-pins clean distclean
+.PHONY: all lib examples run render native-libs dist test screenshots fmt \
+        check-tls update-pins clean distclean
 
 all: examples
 
@@ -98,6 +100,25 @@ run: $(BUILD)/screenshot
 # third positional argument, so it's only passed when OUTPUT is set too.
 render: $(BUILD)/render
 	./$(BUILD)/render "$(INPUT)" $(if $(OUTPUT),"$(OUTPUT)" $(WIDTH))
+
+fmt:
+	cargo fmt --all
+
+# Cargo unions features across the whole graph, so `default-features = false` on
+# reqwest does not by itself keep native-tls out: any crate that enables
+# reqwest/default-tls drags OpenSSL back in, and it shows up as -lssl -lcrypto.
+# `cargo tree -i` exits non-zero when the package isn't in the graph, which is
+# exactly the success case here.
+check-tls:
+	@if cargo tree -i openssl-sys >/dev/null 2>&1; then \
+	    echo "OpenSSL is in the dependency graph:"; \
+	    cargo tree -e features -i openssl-sys; \
+	    exit 1; \
+	else \
+	    echo "no openssl-sys in the graph"; \
+	fi
+	@echo "--- rustls copies (must be exactly one) ---"
+	@cargo tree -i rustls 2>/dev/null | head -5 || echo "  none"
 
 test:
 	cargo test

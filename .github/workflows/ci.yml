@@ -60,6 +60,20 @@ jobs:
       - name: Build the static library
         run: cargo build --release
 
+      - name: No OpenSSL in the graph
+        shell: bash
+        # `default-features = false` on reqwest does not keep native-tls out on
+        # its own — cargo unions features, so one crate enabling
+        # reqwest/default-tls puts OpenSSL back and adds -lssl -lcrypto to every
+        # downstream link. Catch it here rather than in a consumer's build.
+        run: |
+          if cargo tree -i openssl-sys >/dev/null 2>&1; then
+            echo "::error::openssl-sys is in the dependency graph"
+            cargo tree -e features -i openssl-sys
+            exit 1
+          fi
+          echo "no openssl-sys in the graph"
+
       - name: Check for duplicate transitive crates
         shell: bash
         # The [patch.crates-io] redirect exists to keep exactly one anyrender and
@@ -162,7 +176,12 @@ jobs:
         with:
           key: lint
 
-      - run: cargo fmt --all -- --check
+      - name: cargo fmt
+        run: |
+          if ! cargo fmt --all -- --check; then
+            echo "::error::unformatted code — run 'make fmt' and commit the result"
+            exit 1
+          fi
 
       - name: Install Linux dependencies
         run: |
@@ -176,6 +195,11 @@ jobs:
         run: |
           make lib
           make examples CFLAGS="-std=c11 -O2 -Wall -Wextra -Werror"
+
+      - name: Build with the ring TLS backend
+        # tls-ring is the no-cmake/no-NASM alternative. It is not the default,
+        # so without this it would break unnoticed.
+        run: cargo check --no-default-features --features tls-ring
 
       - name: Shellcheck the update script
         run: |
