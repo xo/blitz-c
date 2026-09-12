@@ -28,6 +28,12 @@ extern "C" {
 #define BLITZ_COLOR_SCHEME_LIGHT 0u
 #define BLITZ_COLOR_SCHEME_DARK  1u
 
+/* Which @media rules apply. print is for producing a document rather than a
+ * screenshot; it is styling only and does NOT paginate — @page and
+ * page-break-* are parsed and ignored. */
+#define BLITZ_MEDIA_TYPE_SCREEN  0u
+#define BLITZ_MEDIA_TYPE_PRINT   1u
+
 typedef struct BlitzContext BlitzContext;
 
 typedef struct {
@@ -41,7 +47,8 @@ typedef struct {
     const char *user_agent;         /* NULL -> library default               */
     uint8_t     enable_net;         /* 0 disables sub-resource fetching      */
     uint8_t     fit_content_height; /* grow height to fit document           */
-    uint8_t     _reserved[2];
+    uint8_t     media_type;         /* BLITZ_MEDIA_TYPE_*                    */
+    uint8_t     _reserved[1];
 } BlitzRenderOptions;
 
 typedef struct {

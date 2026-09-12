@@ -36,7 +36,7 @@ mod net;
 
 use anyrender::{PaintScene as _, render_to_buffer};
 use anyrender_vello_cpu::VelloCpuImageRenderer;
-use blitz_dom::{DocumentConfig, util::Color};
+use blitz_dom::{DocumentConfig, MediaType, util::Color};
 use blitz_html::HtmlDocument;
 use blitz_paint::paint_scene;
 use blitz_traits::shell::{ColorScheme, Viewport};
@@ -105,6 +105,11 @@ pub extern "C" fn blitz_version() -> *const c_char {
 pub const BLITZ_COLOR_SCHEME_LIGHT: u32 = 0;
 pub const BLITZ_COLOR_SCHEME_DARK: u32 = 1;
 
+/// `@media screen` rules apply. The default, and what a screenshot wants.
+pub const BLITZ_MEDIA_TYPE_SCREEN: u8 = 0;
+/// `@media print` rules apply. Styling only — this does not paginate.
+pub const BLITZ_MEDIA_TYPE_PRINT: u8 = 1;
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct BlitzRenderOptions {
@@ -131,7 +136,13 @@ pub struct BlitzRenderOptions {
     /// Grow the render height to fit the document instead of clipping to
     /// `height`. This is the screenshot example's behaviour.
     pub fit_content_height: u8,
-    pub _reserved: [u8; 2],
+    /// `BLITZ_MEDIA_TYPE_*`. Selects which `@media` rules apply. `print` is
+    /// what you want when producing a document rather than a screenshot: it
+    /// drops nav and ad chrome and switches print stylesheets on. It does NOT
+    /// paginate — Blitz has no fragmentation, so `@page` and `page-break-*`
+    /// are parsed and ignored.
+    pub media_type: u8,
+    pub _reserved: [u8; 1],
 }
 
 impl Default for BlitzRenderOptions {
@@ -147,7 +158,8 @@ impl Default for BlitzRenderOptions {
             user_agent: ptr::null(),
             enable_net: 1,
             fit_content_height: 1,
-            _reserved: [0; 2],
+            media_type: BLITZ_MEDIA_TYPE_SCREEN,
+            _reserved: [0; 1],
         }
     }
 }
@@ -170,6 +182,7 @@ struct ResolvedOptions {
     user_agent: String,
     enable_net: bool,
     fit_content_height: bool,
+    media_type: MediaType,
 }
 
 impl ResolvedOptions {
@@ -233,6 +246,10 @@ impl ResolvedOptions {
             user_agent,
             enable_net: raw.enable_net != 0,
             fit_content_height: raw.fit_content_height != 0,
+            media_type: match raw.media_type {
+                BLITZ_MEDIA_TYPE_PRINT => MediaType::print(),
+                _ => MediaType::screen(),
+            },
         })
     }
 }
@@ -616,6 +633,7 @@ fn render(
             base_url,
             net_provider: net.clone().map(|n| n as _),
             viewport: Some(viewport),
+            media_type: Some(options.media_type.clone()),
             ..Default::default()
         },
     );
