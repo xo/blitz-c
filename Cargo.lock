@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "accesskit"
-version = "0.24.1"
+version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3b7f7f85a7e5f68090000ed7622545829afd484d210358702ae4cb97dd0c320"
+checksum = "ad442f58ee04714aaa0ba0a2768c1ea1935b29507bb22ddece8cbbc76db02932"
 dependencies = [
  "uuid",
 ]
@@ -171,7 +171,7 @@ dependencies = [
 [[package]]
 name = "blitz-dom"
 version = "0.3.0-beta.2"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 dependencies = [
  "accesskit",
  "anyrender",
@@ -182,7 +182,7 @@ dependencies = [
  "color",
  "cssparser",
  "cursor-icon",
- "debug_timer 0.1.3 (git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c)",
+ "debug_timer 0.1.3 (git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9)",
  "euclid",
  "html-escape",
  "image",
@@ -216,7 +216,7 @@ dependencies = [
 [[package]]
 name = "blitz-html"
 version = "0.3.0-beta.2"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 dependencies = [
  "blitz-dom",
  "blitz-traits",
@@ -227,12 +227,13 @@ dependencies = [
 [[package]]
 name = "blitz-paint"
 version = "0.3.0-beta.2"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 dependencies = [
  "anyrender",
  "anyrender_svg",
  "blitz-dom",
  "blitz-traits",
+ "bytemuck",
  "color",
  "euclid",
  "kurbo",
@@ -248,7 +249,7 @@ dependencies = [
 [[package]]
 name = "blitz-traits"
 version = "0.3.0-beta.2"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 dependencies = [
  "atomic_refcell",
  "bitflags",
@@ -561,7 +562,7 @@ checksum = "da220af51a1a335e9a930beaaef53d261e41ea9eecfb3d973a3ddae1a7284b9c"
 [[package]]
 name = "debug_timer"
 version = "0.1.3"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 
 [[package]]
 name = "derive_more"
@@ -751,9 +752,8 @@ dependencies = [
 
 [[package]]
 name = "fontique"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6688bc1294fe7117d788937b6c53480169b29c566954af490830d4c09da9516a"
+version = "0.11.0"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
 dependencies = [
  "hashbrown",
  "linebender_resource_handle",
@@ -1688,14 +1688,41 @@ dependencies = [
 [[package]]
 name = "parlance"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b6937eda350acc1a5d05872c3cbf99fe78619c269096e2be3d4a350058639d5"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "parley"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22d2ff88bd3f7d68d1d9b09c7e6209f9a8e8c05088295140a2bcf2e9b17038c5"
+version = "0.11.0"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
+dependencies = [
+ "fontique",
+ "hashbrown",
+ "linebender_resource_handle",
+ "parlance",
+ "parley_engine",
+ "smallvec",
+]
+
+[[package]]
+name = "parley_data"
+version = "0.11.0"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
+dependencies = [
+ "icu_properties",
+]
+
+[[package]]
+name = "parley_emoji"
+version = "0.11.0"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
+
+[[package]]
+name = "parley_engine"
+version = "0.11.0"
+source = "git+https://github.com/linebender/parley?rev=6a9444f402b2c8698cf0c28dcd7ea8b469688f16#6a9444f402b2c8698cf0c28dcd7ea8b469688f16"
 dependencies = [
  "fontique",
  "harfrust",
@@ -1706,16 +1733,8 @@ dependencies = [
  "linebender_resource_handle",
  "parlance",
  "parley_data",
+ "parley_emoji",
  "skrifa",
-]
-
-[[package]]
-name = "parley_data"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1567535334d6ba2d3cde19221ba9a7bd0fabb3cbd99046ddfb10ae061cfcc889"
-dependencies = [
- "icu_properties",
 ]
 
 [[package]]
@@ -2602,7 +2621,7 @@ dependencies = [
 [[package]]
 name = "stylo_taffy"
 version = "0.3.0-beta.2"
-source = "git+https://github.com/dioxuslabs/blitz?rev=1c1e78c54841d2e47c511edfa2917a6b89a1915c#1c1e78c54841d2e47c511edfa2917a6b89a1915c"
+source = "git+https://github.com/dioxuslabs/blitz?rev=7100a3b38901085e9a08180d235810cb6a3194c9#7100a3b38901085e9a08180d235810cb6a3194c9"
 dependencies = [
  "bitflags",
  "stylo",
@@ -2693,9 +2712,8 @@ dependencies = [
 [[package]]
 name = "taffy"
 version = "0.14.0"
-source = "git+https://github.com/DioxusLabs/taffy?rev=63b273733cb913cbe32548329524f51e45dbd438#63b273733cb913cbe32548329524f51e45dbd438"
+source = "git+https://github.com/DioxusLabs/taffy?rev=4863877b9cab21645b160d7f247901f90214fe27#4863877b9cab21645b160d7f247901f90214fe27"
 dependencies = [
- "arrayvec",
  "serde",
  "slotmap",
  "smallvec",

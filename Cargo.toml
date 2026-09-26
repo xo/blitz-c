@@ -23,8 +23,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Blitz, pinned. All five crates must share one git source + rev so they resolve
 # to a single checkout — mixing revs gives you two incompatible copies of
 # blitz-traits and a wall of trait-mismatch errors.
-blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
-blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
+blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
 # NOTE: blitz-net is deliberately NOT a dependency. It sets reqwest's
 # `native-tls` feature on its dependency line, unconditionally rather than
 # behind a cargo feature, so depending on it puts OpenSSL in the graph and
@@ -34,8 +34,8 @@ blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d
 # blitz_traits::net::NetProvider against this crate's own reqwest instead.
 # Re-check that crate's manifest when bumping the pin: if it ever gates TLS
 # behind a feature, src/net.rs can go away.
-blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
-blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "1c1e78c54841d2e47c511edfa2917a6b89a1915c" }
+blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
+blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
 
 # AnyRender is declared against crates.io and redirected by [patch.crates-io].
 # Declaring it as a git dependency directly would NOT work: blitz-paint depends
