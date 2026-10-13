@@ -23,8 +23,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Blitz, pinned. All five crates must share one git source + rev so they resolve
 # to a single checkout — mixing revs gives you two incompatible copies of
 # blitz-traits and a wall of trait-mismatch errors.
-blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
-blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
+blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "e72650a6e67941852fddf025295cfee30c39ea32" }
+blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "e72650a6e67941852fddf025295cfee30c39ea32" }
 # NOTE: blitz-net is deliberately NOT a dependency. It sets reqwest's
 # `native-tls` feature on its dependency line, unconditionally rather than
 # behind a cargo feature, so depending on it puts OpenSSL in the graph and
@@ -34,8 +34,8 @@ blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b389010
 # blitz_traits::net::NetProvider against this crate's own reqwest instead.
 # Re-check that crate's manifest when bumping the pin: if it ever gates TLS
 # behind a feature, src/net.rs can go away.
-blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
-blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b38901085e9a08180d235810cb6a3194c9" }
+blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "e72650a6e67941852fddf025295cfee30c39ea32" }
+blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "e72650a6e67941852fddf025295cfee30c39ea32" }
 
 # AnyRender is declared against crates.io and redirected by [patch.crates-io].
 # Declaring it as a git dependency directly would NOT work: blitz-paint depends
@@ -44,8 +44,8 @@ blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "7100a3b3890
 # from the other, and `paint_scene(scene, ...)` stops compiling. Patching
 # rewrites the crates.io source for the whole graph, blitz-paint included, so
 # everything shares one copy.
-anyrender = "0.13.0"
-anyrender_vello_cpu = { version = "0.17.0", features = ["multithreading"] }
+anyrender = "0.14.0"
+anyrender_vello_cpu = { version = "0.18.0", features = ["multithreading"] }
 
 # Must match the peniko that AnyRender and Blitz resolve to, since `Fill`,
 # `Rect` and `Color` cross the boundary between them.
@@ -96,6 +96,10 @@ pulldown-cmark = "0.13"
 
 tracing-subscriber = { version = "0.3", optional = true }
 
+# fontique is already in the graph through blitz. It is named here only so that
+# the `fontconfig-dlopen` feature below can switch on its feature of that name.
+fontique = { version = "0.12", default-features = false, optional = true }
+
 [features]
 default = ["tls-aws-lc"]
 
@@ -122,15 +126,27 @@ tls-ring = ["reqwest/rustls-no-provider", "dep:rustls"]
 # into a host process should not install global subscribers uninvited.
 tracing = ["dep:tracing-subscriber"]
 
+# Load fontconfig with dlopen at run time instead of linking it. Off by default.
+#
+# Without it, building for Linux or BSD runs pkg-config for fontconfig, so the
+# build needs fontconfig development files for the *target*. A target with no
+# such sysroot, such as musl or FreeBSD built from a Linux host, cannot get
+# them, and has to use this feature. The cost: the archive no longer links
+# -lfontconfig, so a consumer that links fully statically gets no system fonts
+# and renders blank text. Set the feature with --features, not with the
+# RUST_FONTCONFIG_DLOPEN variable: the variable skips pkg-config but leaves
+# fontique looking for symbols that only the feature provides.
+fontconfig-dlopen = ["dep:fontique", "fontique/fontconfig-dlopen"]
+
 [patch.crates-io]
-anyrender = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
-anyrender_vello_cpu = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+anyrender = { git = "https://github.com/dioxuslabs/anyrender", rev = "870407d142a2cd38ea6404717c6d68dceeeb91d6" }
+anyrender_vello_cpu = { git = "https://github.com/dioxuslabs/anyrender", rev = "870407d142a2cd38ea6404717c6d68dceeeb91d6" }
 # Uncomment as needed. Which of these appear depends on which blitz-paint
 # features are enabled; cargo warns about patches it didn't use, so add them
 # only when a duplicate actually shows up in `cargo tree`.
-# anyrender_svg = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
-# anyrender_serialize = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
-# wgpu_context = { git = "https://github.com/dioxuslabs/anyrender", rev = "562c03ea6a657f158e5ac7601450f3194e110fa1" }
+# anyrender_svg = { git = "https://github.com/dioxuslabs/anyrender", rev = "870407d142a2cd38ea6404717c6d68dceeeb91d6" }
+# anyrender_serialize = { git = "https://github.com/dioxuslabs/anyrender", rev = "870407d142a2cd38ea6404717c6d68dceeeb91d6" }
+# wgpu_context = { git = "https://github.com/dioxuslabs/anyrender", rev = "870407d142a2cd38ea6404717c6d68dceeeb91d6" }
 
 # --- Profiles -----------------------------------------------------------------
 # Previously inherited from the blitz workspace; redefined here. Note that none
