@@ -23,8 +23,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # Blitz, pinned. All five crates must share one git source + rev so they resolve
 # to a single checkout — mixing revs gives you two incompatible copies of
 # blitz-traits and a wall of trait-mismatch errors.
-blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "f8723f495c7c6bfb611a923a21ed5c8e0fe95d55" }
-blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "f8723f495c7c6bfb611a923a21ed5c8e0fe95d55" }
+blitz-dom = { git = "https://github.com/dioxuslabs/blitz", rev = "fe33b778baaef5375d941c8a4f491f62cbd31d30" }
+blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "fe33b778baaef5375d941c8a4f491f62cbd31d30" }
 # NOTE: blitz-net is deliberately NOT a dependency. It sets reqwest's
 # `native-tls` feature on its dependency line, unconditionally rather than
 # behind a cargo feature, so depending on it puts OpenSSL in the graph and
@@ -34,8 +34,8 @@ blitz-html = { git = "https://github.com/dioxuslabs/blitz", rev = "f8723f495c7c6
 # blitz_traits::net::NetProvider against this crate's own reqwest instead.
 # Re-check that crate's manifest when bumping the pin: if it ever gates TLS
 # behind a feature, src/net.rs can go away.
-blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "f8723f495c7c6bfb611a923a21ed5c8e0fe95d55" }
-blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "f8723f495c7c6bfb611a923a21ed5c8e0fe95d55" }
+blitz-paint = { git = "https://github.com/dioxuslabs/blitz", rev = "fe33b778baaef5375d941c8a4f491f62cbd31d30" }
+blitz-traits = { git = "https://github.com/dioxuslabs/blitz", rev = "fe33b778baaef5375d941c8a4f491f62cbd31d30" }
 
 # AnyRender is declared against crates.io and redirected by [patch.crates-io].
 # Declaring it as a git dependency directly would NOT work: blitz-paint depends
@@ -139,14 +139,14 @@ tracing = ["dep:tracing-subscriber"]
 fontconfig-dlopen = ["dep:fontique", "fontique/fontconfig-dlopen"]
 
 [patch.crates-io]
-anyrender = { git = "https://github.com/dioxuslabs/anyrender", rev = "ee6109cef53d2de84e1e837e453a63a2a7d41fab" }
-anyrender_vello_cpu = { git = "https://github.com/dioxuslabs/anyrender", rev = "ee6109cef53d2de84e1e837e453a63a2a7d41fab" }
+anyrender = { git = "https://github.com/dioxuslabs/anyrender", rev = "267783d595b55812950065f478e12133a4cff904" }
+anyrender_vello_cpu = { git = "https://github.com/dioxuslabs/anyrender", rev = "267783d595b55812950065f478e12133a4cff904" }
 # Uncomment as needed. Which of these appear depends on which blitz-paint
 # features are enabled; cargo warns about patches it didn't use, so add them
 # only when a duplicate actually shows up in `cargo tree`.
-# anyrender_svg = { git = "https://github.com/dioxuslabs/anyrender", rev = "ee6109cef53d2de84e1e837e453a63a2a7d41fab" }
-# anyrender_serialize = { git = "https://github.com/dioxuslabs/anyrender", rev = "ee6109cef53d2de84e1e837e453a63a2a7d41fab" }
-# wgpu_context = { git = "https://github.com/dioxuslabs/anyrender", rev = "ee6109cef53d2de84e1e837e453a63a2a7d41fab" }
+# anyrender_svg = { git = "https://github.com/dioxuslabs/anyrender", rev = "267783d595b55812950065f478e12133a4cff904" }
+# anyrender_serialize = { git = "https://github.com/dioxuslabs/anyrender", rev = "267783d595b55812950065f478e12133a4cff904" }
+# wgpu_context = { git = "https://github.com/dioxuslabs/anyrender", rev = "267783d595b55812950065f478e12133a4cff904" }
 
 # --- Profiles -----------------------------------------------------------------
 # Previously inherited from the blitz workspace; redefined here. Note that none
