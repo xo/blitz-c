@@ -5,6 +5,8 @@
 //! to the ordinary `HtmlDocument` path, so there is no second rendering
 //! pipeline to maintain — anything Blitz can style, markdown output inherits.
 
+use std::borrow::Cow;
+
 use pulldown_cmark::{Options, Parser, html};
 
 /// The CSS lives in a macro so it can be used both as a plain `&str` and as a
@@ -77,6 +79,11 @@ blockquote {
 }
 
 ul, ol { padding-left: 2em; }
+/* Blitz draws an outside ordered marker with no space after it, so "1." touches
+   the text. Padding on the item moves the text and leaves the marker where it
+   is. Bullets are not affected and need nothing. Drop this rule when Blitz puts
+   the space in the marker. */
+ol > li { padding-left: 0.4em; }
 li + li { margin-top: 0.25em; }
 li > p { margin-bottom: 0; }
 
@@ -147,6 +154,90 @@ pub const DEFAULT_STYLESHEET: &str = default_css!();
 /// Same bytes, NUL-terminated, for handing out over FFI without allocating.
 pub const DEFAULT_STYLESHEET_NUL: &str = concat!(default_css!(), "\0");
 
+/// The width of a tab stop in a `<pre>` block. This is the CSS default for
+/// `tab-size`.
+const TAB_SIZE: usize = 8;
+
+/// Replace each tab inside a `<pre>` element with the spaces that reach the next
+/// tab stop.
+///
+/// Blitz does not lay out a tab in preformatted text. It draws the missing-glyph
+/// box, and `tab-size` has no effect, so a Go or Makefile code block shows a
+/// small hollow square where the indent should be. Spaces are laid out
+/// correctly, so they are written here. The column counts characters, restarts
+/// after a newline, and does not count tags. An entity such as `&amp;` counts as
+/// one. Tabs outside `<pre>` are left alone, because they collapse to a space.
+fn expand_tabs_in_pre(html: &str) -> Cow<'_, str> {
+    if !html.contains('\t') || !html.contains("<pre") {
+        return Cow::Borrowed(html);
+    }
+
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut rest = html;
+    while let Some(start) = rest.find("<pre") {
+        // `<pre` has to open a `pre` tag, and not a tag such as `<preview>`.
+        let after = &rest[start + "<pre".len()..];
+        if !(after.starts_with('>') || after.starts_with(|c: char| c.is_ascii_whitespace())) {
+            out.push_str(&rest[..start + "<pre".len()]);
+            rest = after;
+            continue;
+        }
+        let Some(len) = rest[start..].find("</pre>") else {
+            break;
+        };
+        let end = start + len + "</pre>".len();
+        out.push_str(&rest[..start]);
+        expand_tabs_in_block(&rest[start..end], &mut out);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    Cow::Owned(out)
+}
+
+/// Writes one `<pre>...</pre>` block to `out`, with its tabs expanded.
+fn expand_tabs_in_block(block: &str, out: &mut String) {
+    let bytes = block.as_bytes();
+    let mut i = 0;
+    let mut col = 0;
+    // Every byte tested below is ASCII, and an ASCII byte never appears inside
+    // a multi-byte UTF-8 sequence, so each slice is on a character boundary.
+    while i < bytes.len() {
+        match bytes[i] {
+            b'<' => {
+                let end = block[i..].find('>').map_or(block.len(), |n| i + n + 1);
+                out.push_str(&block[i..end]);
+                i = end;
+            }
+            b'&' => {
+                let end = match block[i..].find(';') {
+                    Some(n) if n <= 10 => i + n + 1,
+                    _ => i + 1,
+                };
+                out.push_str(&block[i..end]);
+                i = end;
+                col += 1;
+            }
+            b'\t' => {
+                let n = TAB_SIZE - col % TAB_SIZE;
+                out.extend(std::iter::repeat_n(' ', n));
+                col += n;
+                i += 1;
+            }
+            b'\n' => {
+                out.push('\n');
+                col = 0;
+                i += 1;
+            }
+            _ => {
+                let ch = block[i..].chars().next().unwrap_or(' ');
+                out.push(ch);
+                col += 1;
+                i += ch.len_utf8();
+            }
+        }
+    }
+}
+
 fn parser_options() -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -168,6 +259,7 @@ pub fn to_html_document(markdown: &str, stylesheet: Option<&str>) -> String {
 
     let mut body = String::with_capacity(markdown.len() * 3 / 2);
     html::push_html(&mut body, Parser::new_ext(markdown, parser_options()));
+    let body = expand_tabs_in_pre(&body);
 
     let mut doc = String::with_capacity(body.len() + css.len() + 256);
     doc.push_str("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
@@ -203,6 +295,46 @@ mod tests {
         let out = to_html_document("| a |\n| - |\n| 1 |\n\n~~x~~", None);
         assert!(out.contains("<table>"));
         assert!(out.contains("<del>"));
+    }
+
+    #[test]
+    fn a_tab_in_a_code_block_reaches_the_next_tab_stop() {
+        let out = to_html_document("```\na\tb\n\tc\n```", None);
+        assert!(out.contains("a       b"), "7 spaces after a: {out}");
+        assert!(out.contains("\n        c"), "8 spaces at the start: {out}");
+        let body = out.split("<body>").nth(1).unwrap();
+        assert!(!body.contains('\t'), "no tab is left in the body: {body}");
+    }
+
+    #[test]
+    fn an_entity_counts_as_one_column_and_a_tag_as_none() {
+        let out = to_html_document("```go\n&\tx\n```", None);
+        assert!(out.contains("&amp;       x"), "&amp; is one column: {out}");
+        let out = to_html_document("<pre><b>ab</b>\tx</pre>", None);
+        assert!(
+            out.contains("<b>ab</b>      x"),
+            "a tag is no column: {out}"
+        );
+    }
+
+    #[test]
+    fn the_column_starts_again_after_a_newline() {
+        let out = to_html_document("```\nabc\td\nabcdefg\th\n```", None);
+        assert!(out.contains("abc     d"), "5 spaces: {out}");
+        assert!(out.contains("abcdefg h"), "1 space: {out}");
+    }
+
+    #[test]
+    fn a_tab_outside_pre_is_left_alone() {
+        let out = to_html_document("a\tb", None);
+        assert!(out.contains("a\tb"), "{out}");
+        let out = to_html_document("<preview>\tx</preview>", None);
+        assert!(out.contains("<preview>\tx"), "{out}");
+    }
+
+    #[test]
+    fn an_ordered_list_item_has_padding_for_the_marker() {
+        assert!(DEFAULT_STYLESHEET.contains("ol > li { padding-left"));
     }
 
     #[test]

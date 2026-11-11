@@ -143,14 +143,13 @@ fontconfig-dlopen = ["dep:fontique", "fontique/fontconfig-dlopen"]
 [patch.crates-io]
 # Blitz builds against a development branch of vello, because glifo 0.4.0 with
 # the embolden change is not released yet (DioxusLabs/vello, branch
-# devin/glifo-0.4.0-embolden-2049). These four crates must come from that one
-# checkout. The rev is the one in the Cargo.lock of the pinned blitz, so this
-# builds what upstream builds. Drop the four lines when glifo 0.4.0 or newer is
+# devin/glifo-0.4.0-embolden-2049). These three crates must come from that one
+# checkout. Blitz also patches vello_gpu, which this crate does not use. The rev is the one in the Cargo.lock of the pinned blitz, so this
+# builds what upstream builds. Drop the three lines when glifo 0.4.0 or newer is
 # on crates.io and blitz stops patching it.
 glifo = { git = "https://github.com/dioxuslabs/vello", rev = "be500db2b3a9cb3613de0e2c43f9358635c1f309" }
 vello_common = { git = "https://github.com/dioxuslabs/vello", rev = "be500db2b3a9cb3613de0e2c43f9358635c1f309" }
 vello_cpu = { git = "https://github.com/dioxuslabs/vello", rev = "be500db2b3a9cb3613de0e2c43f9358635c1f309" }
-vello_gpu = { git = "https://github.com/dioxuslabs/vello", rev = "be500db2b3a9cb3613de0e2c43f9358635c1f309" }
 # Uncomment as needed. Which of these appear depends on which blitz-paint
 # features are enabled; cargo warns about patches it didn't use, so add them
 # only when a duplicate actually shows up in `cargo tree`.
