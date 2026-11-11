@@ -64,26 +64,41 @@ pub const BLITZ_ERR_PANIC: c_int = -7;
 // Size limit
 // ---------------------------------------------------------------------------
 
-/// The most pixels that a render can have in one direction.
+/// The most pixels that a render can have across.
+pub const MAX_RENDER_WIDTH: u32 = 65408;
+
+/// The most pixels that a render can have down.
+pub const MAX_RENDER_HEIGHT: u32 = 65532;
+
+/// Fails if `css` CSS pixels at `scale` is more than `limit` device pixels.
+/// `axis` is "wide" or "tall", and `hint` says what to lower.
 ///
 /// The CPU renderer takes its width and height as `u16`. `anyrender_vello_cpu`
-/// casts them with `as u16` and does not check them, so a larger size wraps
-/// around modulo 65536 and the renderer draws a short image. The caller then
-/// saw "renderer produced N bytes, expected M", with no word about the limit.
-/// This is the limit of the CPU renderer, and not of a GPU texture. The check
-/// below turns the wrap into an error that names it.
-pub const MAX_RENDER_PIXELS: u32 = u16::MAX as u32;
-
-/// Fails if `css` CSS pixels at `scale` is more than [`MAX_RENDER_PIXELS`]
-/// device pixels. `axis` is "wide" or "tall", and `hint` says what to lower.
-fn check_render_size(axis: &str, css: f64, scale: f64, hint: &str) -> Result<(), (c_int, String)> {
+/// casts them with `as u16` and does not check them. Past 65535 the size wraps
+/// around modulo 65536, and the renderer draws a short image. The caller then saw
+/// "renderer produced N bytes, expected M", with no word about the limit.
+///
+/// The real limits are a little lower than 65535, because vello rounds the size
+/// up to whole tiles before it counts, and a size that rounds past 65535 panics
+/// ("called `Option::unwrap()` on a `None` value", in vello_common). The height
+/// renders up to 65532 rows, which is a multiple of the 4 row tile, and fails at
+/// 65533. The width was measured: 65408 columns render and 65409 do not, which
+/// fits a round up to a multiple of 128. These are the CPU renderer's limits and
+/// not a GPU texture limit.
+fn check_render_size(
+    axis: &str,
+    css: f64,
+    scale: f64,
+    limit: u32,
+    hint: &str,
+) -> Result<(), (c_int, String)> {
     let pixels = (css * scale) as u64;
-    if pixels > MAX_RENDER_PIXELS as u64 {
+    if pixels > limit as u64 {
         return Err((
             BLITZ_ERR_INVALID_ARG,
             format!(
                 "the render would be {pixels} pixels {axis} ({css} CSS px at scale {scale}), \
-                 and the renderer draws at most {MAX_RENDER_PIXELS} pixels in one direction. {hint}"
+                 and the renderer draws at most {limit} pixels {axis}. {hint}"
             ),
         ));
     }
@@ -288,6 +303,7 @@ impl ResolvedOptions {
             "wide",
             resolved.css_width as f64,
             resolved.scale,
+            MAX_RENDER_WIDTH,
             "Lower width or scale.",
         )?;
         if !resolved.fit_content_height {
@@ -295,6 +311,7 @@ impl ResolvedOptions {
                 "tall",
                 resolved.css_height as f64,
                 resolved.scale,
+                MAX_RENDER_HEIGHT,
                 "Lower height or scale.",
             )?;
         }
@@ -720,6 +737,7 @@ fn render(
         "tall",
         css_height,
         options.scale,
+        MAX_RENDER_HEIGHT,
         "Lower scale, or lower max_height to cut the page short.",
     )?;
 
@@ -923,21 +941,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_limit_is_inclusive() {
-        assert!(check_render_size("tall", 65535.0, 1.0, "").is_ok());
-        assert!(check_render_size("tall", 32767.0, 2.0, "").is_ok());
-        let (code, msg) = check_render_size("tall", 65536.0, 1.0, "Lower scale.").unwrap_err();
+    fn the_limits_are_inclusive() {
+        assert!(check_render_size("tall", 65532.0, 1.0, MAX_RENDER_HEIGHT, "").is_ok());
+        assert!(check_render_size("tall", 32766.0, 2.0, MAX_RENDER_HEIGHT, "").is_ok());
+        assert!(check_render_size("wide", 65408.0, 1.0, MAX_RENDER_WIDTH, "").is_ok());
+
+        let (code, msg) =
+            check_render_size("tall", 65533.0, 1.0, MAX_RENDER_HEIGHT, "Lower scale.").unwrap_err();
         assert_eq!(code, BLITZ_ERR_INVALID_ARG);
-        assert!(msg.contains("65536 pixels tall"), "{msg}");
-        assert!(msg.contains("65535"), "the message names the limit: {msg}");
+        assert!(msg.contains("65533 pixels tall"), "{msg}");
+        assert!(msg.contains("at most 65532 pixels tall"), "{msg}");
         assert!(msg.ends_with("Lower scale."), "{msg}");
-        assert!(check_render_size("tall", 32768.0, 2.0, "").is_err());
+        assert!(check_render_size("tall", 32767.0, 2.0, MAX_RENDER_HEIGHT, "").is_err());
+
+        let (_, msg) = check_render_size("wide", 65409.0, 1.0, MAX_RENDER_WIDTH, "").unwrap_err();
+        assert!(msg.contains("at most 65408 pixels wide"), "{msg}");
     }
 
     #[test]
     fn the_message_says_what_the_caller_asked_for() {
         // The case iv reported: a document of 36257 CSS px at scale 2.
-        let (_, msg) = check_render_size("tall", 36257.0, 2.0, "").unwrap_err();
+        let (_, msg) = check_render_size("tall", 36257.0, 2.0, MAX_RENDER_HEIGHT, "").unwrap_err();
         assert!(msg.contains("72514 pixels tall"), "{msg}");
         assert!(msg.contains("36257 CSS px at scale 2"), "{msg}");
     }

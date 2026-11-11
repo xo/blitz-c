@@ -41,10 +41,11 @@ typedef struct {
     uint32_t    height;             /* CSS px; 0 -> 800                      */
     float       scale;              /* device pixel ratio; <=0 -> 1.0        */
     uint32_t    max_height;         /* CSS px cap; 0 -> 4000                 */
-    /* The image can have at most 65535 pixels in each direction, because the
-     * CPU renderer counts them in 16 bits. A render over that fails with
-     * BLITZ_ERR_INVALID_ARG, and the message says which way. So width x scale
-     * and the final height x scale must each be 65535 or less. */
+    /* The image can be at most 65408 pixels wide and 65532 pixels tall, because
+     * the CPU renderer counts them in 16 bits and rounds them up to whole tiles.
+     * A render over that fails with BLITZ_ERR_INVALID_ARG, and the message says
+     * which way. So width x scale must be 65408 or less, and the final
+     * height x scale must be 65532 or less. */
     uint32_t    color_scheme;       /* BLITZ_COLOR_SCHEME_*                  */
     uint32_t    background_rgba;    /* 0xRRGGBBAA; alpha 0 -> transparent    */
     uint32_t    net_timeout_ms;     /* 0 -> 10000                            */
