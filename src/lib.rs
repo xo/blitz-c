@@ -61,6 +61,36 @@ pub const BLITZ_ERR_RENDER: c_int = -6;
 pub const BLITZ_ERR_PANIC: c_int = -7;
 
 // ---------------------------------------------------------------------------
+// Size limit
+// ---------------------------------------------------------------------------
+
+/// The most pixels that a render can have in one direction.
+///
+/// The CPU renderer takes its width and height as `u16`. `anyrender_vello_cpu`
+/// casts them with `as u16` and does not check them, so a larger size wraps
+/// around modulo 65536 and the renderer draws a short image. The caller then
+/// saw "renderer produced N bytes, expected M", with no word about the limit.
+/// This is the limit of the CPU renderer, and not of a GPU texture. The check
+/// below turns the wrap into an error that names it.
+pub const MAX_RENDER_PIXELS: u32 = u16::MAX as u32;
+
+/// Fails if `css` CSS pixels at `scale` is more than [`MAX_RENDER_PIXELS`]
+/// device pixels. `axis` is "wide" or "tall", and `hint` says what to lower.
+fn check_render_size(axis: &str, css: f64, scale: f64, hint: &str) -> Result<(), (c_int, String)> {
+    let pixels = (css * scale) as u64;
+    if pixels > MAX_RENDER_PIXELS as u64 {
+        return Err((
+            BLITZ_ERR_INVALID_ARG,
+            format!(
+                "the render would be {pixels} pixels {axis} ({css} CSS px at scale {scale}), \
+                 and the renderer draws at most {MAX_RENDER_PIXELS} pixels in one direction. {hint}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Thread-local error channel
 // ---------------------------------------------------------------------------
 
@@ -220,7 +250,7 @@ impl ResolvedOptions {
             )
         });
 
-        Ok(Self {
+        let resolved = Self {
             css_width: if raw.width == 0 { 1200 } else { raw.width },
             css_height: if raw.height == 0 { 800 } else { raw.height },
             scale: if raw.scale <= 0.0 {
@@ -250,7 +280,25 @@ impl ResolvedOptions {
                 BLITZ_MEDIA_TYPE_PRINT => MediaType::print(),
                 _ => MediaType::screen(),
             },
-        })
+        };
+
+        // The width is known now, and so is the height when it does not follow
+        // the content. Fail before a page is fetched and laid out for nothing.
+        check_render_size(
+            "wide",
+            resolved.css_width as f64,
+            resolved.scale,
+            "Lower width or scale.",
+        )?;
+        if !resolved.fit_content_height {
+            check_render_size(
+                "tall",
+                resolved.css_height as f64,
+                resolved.scale,
+                "Lower height or scale.",
+            )?;
+        }
+        Ok(resolved)
     }
 }
 
@@ -666,6 +714,15 @@ fn render(
         options.css_height as f64
     };
 
+    // The height follows the content, so only now is it known. Without this,
+    // the renderer wraps the height around 65536 and draws a short image.
+    check_render_size(
+        "tall",
+        css_height,
+        options.scale,
+        "Lower scale, or lower max_height to cut the page short.",
+    )?;
+
     let render_width = ((options.css_width as f64 * options.scale) as u32).max(1);
     let render_height = ((css_height * options.scale) as u32).max(1);
 
@@ -859,4 +916,54 @@ fn cstr<'a>(p: *const c_char, name: &str) -> Result<&'a str, (c_int, String)> {
 #[unsafe(no_mangle)]
 pub extern "C" fn blitz_init_tracing() {
     let _ = tracing_subscriber::fmt::try_init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_limit_is_inclusive() {
+        assert!(check_render_size("tall", 65535.0, 1.0, "").is_ok());
+        assert!(check_render_size("tall", 32767.0, 2.0, "").is_ok());
+        let (code, msg) = check_render_size("tall", 65536.0, 1.0, "Lower scale.").unwrap_err();
+        assert_eq!(code, BLITZ_ERR_INVALID_ARG);
+        assert!(msg.contains("65536 pixels tall"), "{msg}");
+        assert!(msg.contains("65535"), "the message names the limit: {msg}");
+        assert!(msg.ends_with("Lower scale."), "{msg}");
+        assert!(check_render_size("tall", 32768.0, 2.0, "").is_err());
+    }
+
+    #[test]
+    fn the_message_says_what_the_caller_asked_for() {
+        // The case iv reported: a document of 36257 CSS px at scale 2.
+        let (_, msg) = check_render_size("tall", 36257.0, 2.0, "").unwrap_err();
+        assert!(msg.contains("72514 pixels tall"), "{msg}");
+        assert!(msg.contains("36257 CSS px at scale 2"), "{msg}");
+    }
+
+    #[test]
+    fn options_that_are_too_wide_are_refused_before_any_work() {
+        let wide = BlitzRenderOptions {
+            width: 40000,
+            scale: 2.0,
+            ..Default::default()
+        };
+        let err = unsafe { ResolvedOptions::from_raw(&wide) }.err().unwrap();
+        assert_eq!(err.0, BLITZ_ERR_INVALID_ARG);
+        assert!(err.1.contains("pixels wide"), "{}", err.1);
+
+        // A height that follows the content is checked after layout instead.
+        let tall = |fit_content_height| BlitzRenderOptions {
+            height: 40000,
+            scale: 2.0,
+            fit_content_height,
+            ..Default::default()
+        };
+        assert!(unsafe { ResolvedOptions::from_raw(&tall(1)) }.is_ok());
+        let err = unsafe { ResolvedOptions::from_raw(&tall(0)) }
+            .err()
+            .unwrap();
+        assert!(err.1.contains("pixels tall"), "{}", err.1);
+    }
 }
